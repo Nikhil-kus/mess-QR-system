@@ -1,0 +1,7 @@
+{
+  "name": "Mess QR MVP",
+  "description": "A minimal Mess Management System using QR codes and Firebase Realtime Database for tracking student meals.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}

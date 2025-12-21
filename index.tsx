@@ -8,6 +8,9 @@ if (!rootElement) {
   throw new Error("Could not find root element to mount to");
 }
 
+// Confirming the app is mounting as requested
+console.log("Confirming application mount to element with ID 'root'...");
+
 try {
     const root = ReactDOM.createRoot(rootElement);
     root.render(

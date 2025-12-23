@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ref, get, child, update } from 'firebase/database';
+import { ref, onValue, update } from 'firebase/database';
 import { db } from '../services/firebase';
 import QRCodeGenerator from './QRCodeGenerator';
 
@@ -18,10 +18,17 @@ interface MealLog {
   dinner?: boolean;
 }
 
+const getLocalDateString = (d = new Date()) => {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 const AdminMealReport: React.FC = () => {
   const [students, setStudents] = useState<StudentInfo[]>([]);
   const [logs, setLogs] = useState<Record<string, MealLog>>({});
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  const [selectedDate, setSelectedDate] = useState(getLocalDateString());
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({ breakfast: 0, lunch: 0, dinner: 0 });
@@ -31,33 +38,30 @@ const AdminMealReport: React.FC = () => {
   const [newValidTill, setNewValidTill] = useState('');
   const [updatingValidity, setUpdatingValidity] = useState(false);
 
-  const fetchData = async (date: string) => {
+  useEffect(() => {
     setLoading(true);
-    try {
-      const dbRef = ref(db);
-      
-      // 1. Fetch Master Student List
-      const studentsSnapshot = await get(child(dbRef, 'students'));
+    
+    // 1. Listen to Students (Real-time)
+    const studentsRef = ref(db, 'students');
+    const unsubscribeStudents = onValue(studentsRef, (snapshot) => {
       const studentList: StudentInfo[] = [];
-      if (studentsSnapshot.exists()) {
-        const data = studentsSnapshot.val();
+      if (snapshot.exists()) {
+        const data = snapshot.val();
         Object.keys(data).forEach(key => {
-          studentList.push({
-            id: key,
-            ...data[key]
-          });
+          studentList.push({ id: key, ...data[key] });
         });
       }
       setStudents(studentList);
+      setLoading(false);
+    });
 
-      // 2. Fetch Logs for specific date
-      const logsSnapshot = await get(child(dbRef, `mealLogs/${date}`));
+    // 2. Listen to Logs for specific date (Real-time)
+    const logsRef = ref(db, `mealLogs/${selectedDate}`);
+    const unsubscribeLogs = onValue(logsRef, (snapshot) => {
       const counts = { breakfast: 0, lunch: 0, dinner: 0 };
-
-      if (logsSnapshot.exists()) {
-        const logsData = logsSnapshot.val();
+      if (snapshot.exists()) {
+        const logsData = snapshot.val();
         setLogs(logsData);
-        
         Object.values(logsData).forEach((meal: any) => {
           if (meal.breakfast) counts.breakfast++;
           if (meal.lunch) counts.lunch++;
@@ -66,17 +70,13 @@ const AdminMealReport: React.FC = () => {
       } else {
         setLogs({});
       }
-
       setStats(counts);
-    } catch (error) {
-      console.error("Error fetching reports:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
+    });
 
-  useEffect(() => {
-    fetchData(selectedDate);
+    return () => {
+      unsubscribeStudents();
+      unsubscribeLogs();
+    };
   }, [selectedDate]);
 
   const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -84,28 +84,26 @@ const AdminMealReport: React.FC = () => {
   };
 
   const shiftDate = (days: number) => {
-    const current = new Date(selectedDate);
+    const parts = selectedDate.split('-').map(Number);
+    const current = new Date(parts[0], parts[1] - 1, parts[2]);
     current.setDate(current.getDate() + days);
-    const newDateStr = current.toISOString().split('T')[0];
-    setSelectedDate(newDateStr);
+    setSelectedDate(getLocalDateString(current));
   };
 
   const handleStudentClick = (student: StudentInfo) => {
     setSelectedStudent(student);
-    setNewValidTill(student.validTill || '');
+    setNewValidTill(student.validTill || getLocalDateString());
   };
 
   const handlePresetDate = (value: number, type: 'days' | 'months') => {
-    const d = new Date(newValidTill || new Date());
+    const parts = newValidTill.split('-').map(Number);
+    const d = new Date(parts[0], parts[1] - 1, parts[2]);
     if (type === 'days') {
         d.setDate(d.getDate() + value);
     } else {
         d.setMonth(d.getMonth() + value);
     }
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    setNewValidTill(`${year}-${month}-${day}`);
+    setNewValidTill(getLocalDateString(d));
   };
 
   const updateValidity = async () => {
@@ -115,23 +113,17 @@ const AdminMealReport: React.FC = () => {
       const updates: any = {};
       updates[`/students/${selectedStudent.id}/validTill`] = newValidTill;
       updates[`/students/${selectedStudent.id}/hasPaid`] = true;
-      
       await update(ref(db), updates);
-      
-      // Update local state
-      setStudents(prev => prev.map(s => s.id === selectedStudent.id ? { ...s, validTill: newValidTill, hasPaid: true } : s));
       setSelectedStudent(prev => prev ? { ...prev, validTill: newValidTill, hasPaid: true } : null);
-      
       alert("Validity updated successfully!");
     } catch (err) {
       console.error(err);
-      alert("Failed to update validity.");
+      alert("Failed to update.");
     } finally {
       setUpdatingValidity(false);
     }
   };
 
-  // Filter students based on search term
   const filteredStudents = students.filter(student => 
     student.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
     student.room.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -152,7 +144,6 @@ const AdminMealReport: React.FC = () => {
               <button 
                 onClick={() => shiftDate(-1)}
                 className="w-10 h-10 flex items-center justify-center rounded-xl bg-gray-50 text-gray-600 hover:bg-indigo-50 hover:text-indigo-600 transition"
-                title="Previous Day"
               >
                 <i className="fas fa-chevron-left"></i>
               </button>
@@ -170,7 +161,6 @@ const AdminMealReport: React.FC = () => {
               <button 
                 onClick={() => shiftDate(1)}
                 className="w-10 h-10 flex items-center justify-center rounded-xl bg-gray-50 text-gray-600 hover:bg-indigo-50 hover:text-indigo-600 transition"
-                title="Next Day"
               >
                 <i className="fas fa-chevron-right"></i>
               </button>
@@ -180,7 +170,7 @@ const AdminMealReport: React.FC = () => {
       {loading ? (
         <div className="text-center py-12 bg-white rounded-2xl shadow-sm border border-gray-100">
             <i className="fas fa-circle-notch fa-spin text-4xl text-indigo-500"></i>
-            <p className="mt-4 text-gray-500 font-medium">Fetching logs for {selectedDate}...</p>
+            <p className="mt-4 text-gray-500 font-medium">Loading records...</p>
         </div>
       ) : (
         <>
@@ -209,14 +199,6 @@ const AdminMealReport: React.FC = () => {
                             onChange={(e) => setSearchTerm(e.target.value)}
                             className="block w-full pl-10 pr-3 py-2 border border-gray-200 rounded-xl text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition bg-gray-50/50"
                         />
-                        {searchTerm && (
-                            <button 
-                                onClick={() => setSearchTerm('')}
-                                className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
-                            >
-                                <i className="fas fa-times-circle"></i>
-                            </button>
-                        )}
                     </div>
                 </div>
             </div>
@@ -273,7 +255,6 @@ const AdminMealReport: React.FC = () => {
         </>
       )}
 
-      {/* Student Detail & Validity Modal */}
       {selectedStudent && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
             <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
@@ -356,7 +337,7 @@ const AdminMealReport: React.FC = () => {
 const StatusIndicator = ({ active }: { active?: boolean }) => (
     active ? (
         <div className="inline-flex items-center justify-center w-8 h-8 bg-green-100 text-green-600 rounded-full animate-in zoom-in duration-300">
-            <i className="fas fa-check text-xs"></i>
+            <i className="fas fa-check text-xs text-green-600"></i>
         </div>
     ) : (
         <span className="text-gray-200">—</span>

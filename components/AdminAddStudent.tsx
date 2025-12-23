@@ -3,12 +3,19 @@ import { ref, set } from 'firebase/database';
 import { db } from '../services/firebase';
 import QRCodeGenerator from './QRCodeGenerator';
 
+const getLocalDateString = (d = new Date()) => {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 const AdminAddStudent: React.FC = () => {
   const [formData, setFormData] = useState({
     name: '',
     room: '',
     phone: '',
-    validTill: ''
+    validTill: getLocalDateString()
   });
   const [generatedId, setGeneratedId] = useState('');
   const [generatedPassword, setGeneratedPassword] = useState('');
@@ -17,11 +24,8 @@ const AdminAddStudent: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
 
   const generateId = () => {
-    // Generate simple 4-digit ID suffix
     const random = Math.floor(1000 + Math.random() * 9000);
-    // Generate simple 6-digit numeric password
     const pwd = Math.floor(100000 + Math.random() * 900000).toString();
-    
     setGeneratedId(`studentID-${random}`);
     setGeneratedPassword(pwd);
     setSuccess(null);
@@ -32,17 +36,14 @@ const AdminAddStudent: React.FC = () => {
   };
 
   const handlePresetDate = (value: number, type: 'days' | 'months') => {
-    const d = new Date();
+    const parts = formData.validTill.split('-').map(Number);
+    const d = new Date(parts[0], parts[1] - 1, parts[2]);
     if (type === 'days') {
         d.setDate(d.getDate() + value);
     } else {
         d.setMonth(d.getMonth() + value);
     }
-    // Format YYYY-MM-DD manually to avoid timezone issues with toISOString
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    setFormData(prev => ({ ...prev, validTill: `${year}-${month}-${day}` }));
+    setFormData(prev => ({ ...prev, validTill: getLocalDateString(d) }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -59,15 +60,12 @@ const AdminAddStudent: React.FC = () => {
     setLoading(true);
     setError(null);
 
-    // Parse ID "studentID-1234" -> "1234"
     const idSuffix = generatedId.split('-')[1];
-    
-    // Construct DB Object matching specific schema
     const newStudent = {
       name: formData.name,
       room: formData.room,
       phone: formData.phone,
-      hasPaid: true, // Automatically set to true as validity period is selected
+      hasPaid: true,
       validTill: formData.validTill,
       qrData: generatedId,
       password: generatedPassword,
@@ -79,17 +77,14 @@ const AdminAddStudent: React.FC = () => {
     };
 
     try {
-      // Write to Firebase: /students/{idSuffix}
       await set(ref(db, `students/${idSuffix}`), newStudent);
       setSuccess(idSuffix);
-      
-      // Clear form
-      setFormData({ name: '', room: '', phone: '', validTill: '' });
+      setFormData({ name: '', room: '', phone: '', validTill: getLocalDateString() });
       setGeneratedId('');
       setGeneratedPassword('');
     } catch (err) {
       console.error(err);
-      setError("Failed to save student to database. Check console/permissions.");
+      setError("Failed to save student.");
     } finally {
       setLoading(false);
     }
@@ -157,55 +152,28 @@ const AdminAddStudent: React.FC = () => {
               <div>
                 <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Valid Till</label>
                 <div className="flex gap-1 mb-2">
-                    <button 
-                        type="button"
-                        onClick={() => handlePresetDate(15, 'days')}
-                        className="flex-1 py-1 text-[10px] sm:text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200 rounded hover:bg-indigo-100 transition whitespace-nowrap"
-                    >
+                    <button type="button" onClick={() => handlePresetDate(15, 'days')} className="flex-1 py-1 text-[10px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200 rounded hover:bg-indigo-100 transition">
                         +15 Days
                     </button>
-                    <button 
-                        type="button"
-                        onClick={() => handlePresetDate(1, 'months')}
-                        className="flex-1 py-1 text-[10px] sm:text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200 rounded hover:bg-indigo-100 transition whitespace-nowrap"
-                    >
+                    <button type="button" onClick={() => handlePresetDate(1, 'months')} className="flex-1 py-1 text-[10px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200 rounded hover:bg-indigo-100 transition">
                         +1 Month
                     </button>
                 </div>
-                <input 
-                  name="validTill" type="date" required value={formData.validTill} onChange={handleChange}
-                  className="w-full p-3 bg-gray-50 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none transition"
-                />
+                <input name="validTill" type="date" required value={formData.validTill} onChange={handleChange} className="w-full p-3 bg-gray-50 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none transition" />
               </div>
             </div>
 
             <div>
               <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Phone</label>
-              <input 
-                name="phone" type="tel" value={formData.phone} onChange={handleChange}
-                className="w-full p-3 bg-gray-50 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none transition"
-                placeholder="e.g. 1234567890"
-              />
+              <input name="phone" type="tel" value={formData.phone} onChange={handleChange} className="w-full p-3 bg-gray-50 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none transition" placeholder="e.g. 1234567890" />
             </div>
 
             <div className="pt-4 border-t border-gray-100">
               <label className="block text-sm font-medium text-gray-700 mb-2">Credentials</label>
-              
               <div className="flex gap-2 mb-4">
-                 <input 
-                   readOnly value={generatedId} 
-                   placeholder="Student ID"
-                   className="flex-grow p-3 bg-gray-100 border border-gray-300 rounded-lg font-mono text-gray-600 text-sm"
-                 />
-                 <button 
-                   type="button" 
-                   onClick={generateId}
-                   className="px-4 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-700 transition font-medium text-sm whitespace-nowrap"
-                 >
-                   Generate
-                 </button>
+                 <input readOnly value={generatedId} placeholder="Student ID" className="flex-grow p-3 bg-gray-100 border border-gray-300 rounded-lg font-mono text-gray-600 text-sm" />
+                 <button type="button" onClick={generateId} className="px-4 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-700 transition font-medium text-sm">Generate</button>
               </div>
-
               {generatedPassword && (
                   <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg flex justify-between items-center animate-in fade-in">
                       <div>
@@ -215,25 +183,11 @@ const AdminAddStudent: React.FC = () => {
                       <i className="fas fa-key text-yellow-400 text-xl"></i>
                   </div>
               )}
-              
-              {generatedId && (
-                <div className="flex flex-col items-center justify-center p-4 bg-gray-50 rounded-xl border border-dashed border-gray-300 animate-in fade-in">
-                  <span className="text-xs text-gray-400 mb-2">QR PREVIEW</span>
-                  <QRCodeGenerator data={generatedId} size={150} />
-                </div>
-              )}
             </div>
 
-            <button 
-              type="submit" 
-              disabled={loading}
-              className={`w-full py-3.5 rounded-lg font-bold text-lg text-white shadow-lg transition-all ${
-                loading ? 'bg-indigo-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700 hover:shadow-xl active:scale-95'
-              }`}
-            >
+            <button type="submit" disabled={loading} className={`w-full py-3.5 rounded-lg font-bold text-lg text-white shadow-lg transition-all ${loading ? 'bg-indigo-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700 active:scale-95'}`}>
               {loading ? 'Saving...' : 'Add Student'}
             </button>
-            <p className="text-[10px] text-center text-gray-400 mt-2">Setting a Validity Date automatically marks fees as paid.</p>
           </form>
         )}
       </div>

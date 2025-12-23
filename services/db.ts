@@ -57,14 +57,17 @@ export const processMealScan = async (qrContent: string, mealType: MealType): Pr
       return { status: 'error', message: `Expired on ${student.validTill}.`, student };
     }
 
-    // 3. Check if meal already taken
+    // 3. Check if meal already taken for the current session (fast check)
     if (student.mealsToday && student.mealsToday[mealType]) {
       return { status: 'warning', message: `Already took ${mealType}.`, student };
     }
 
     // 4. Success - Update DB
     const updates: any = {};
+    // Update student's "current" status for their own card view
     updates[`/students/${studentId}/mealsToday/${mealType}`] = true;
+    // Record in historical logs for admin reports
+    updates[`/mealLogs/${today}/${studentId}/${mealType}`] = true;
     
     await update(ref(db), updates);
 

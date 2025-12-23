@@ -67,10 +67,10 @@ const AdminAddStudent: React.FC = () => {
       name: formData.name,
       room: formData.room,
       phone: formData.phone,
-      hasPaid: false, // Default per requirements
+      hasPaid: true, // Automatically set to true as validity period is selected
       validTill: formData.validTill,
       qrData: generatedId,
-      password: generatedPassword, // Save the generated password
+      password: generatedPassword,
       mealsToday: {
         breakfast: false,
         lunch: false,
@@ -233,6 +233,7 @@ const AdminAddStudent: React.FC = () => {
             >
               {loading ? 'Saving...' : 'Add Student'}
             </button>
+            <p className="text-[10px] text-center text-gray-400 mt-2">Setting a Validity Date automatically marks fees as paid.</p>
           </form>
         )}
       </div>

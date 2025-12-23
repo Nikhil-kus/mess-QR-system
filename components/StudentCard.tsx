@@ -72,6 +72,11 @@ const StudentCard: React.FC<StudentCardProps> = ({ studentId }) => {
 
   if (!student) return null;
 
+  // Logic to determine if paid status is still active based on validity date
+  const today = new Date().toISOString().split('T')[0];
+  const isExpired = student.validTill < today;
+  const isActuallyPaid = student.hasPaid && !isExpired;
+
   return (
     <div className="max-w-md mx-auto p-4">
         <div className="flex justify-between items-center mb-4">
@@ -85,7 +90,7 @@ const StudentCard: React.FC<StudentCardProps> = ({ studentId }) => {
 
         <div className="bg-white rounded-2xl shadow-xl overflow-hidden border border-gray-100">
             <div className="bg-indigo-600 p-6 text-white text-center">
-                <div className="w-20 h-20 bg-indigo-500 rounded-full flex items-center justify-center mx-auto mb-3 text-3xl font-bold border-4 border-indigo-400">
+                <div className="w-20 h-20 bg-indigo-50 rounded-full flex items-center justify-center mx-auto mb-3 text-3xl font-bold border-4 border-indigo-400">
                     {student.name.charAt(0)}
                 </div>
                 <h1 className="text-2xl font-bold">{student.name}</h1>
@@ -93,11 +98,19 @@ const StudentCard: React.FC<StudentCardProps> = ({ studentId }) => {
             </div>
 
             <div className="p-6 flex flex-col items-center">
-                {/* Valid Till Badge */}
-                <div className={`mb-6 px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider ${
-                    student.hasPaid ? 'bg-green-100 text-green-700 border border-green-200' : 'bg-red-100 text-red-700 border border-red-200'
+                {/* Valid Till Badge - Logic updated to show Expired if past date */}
+                <div className={`mb-6 px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider border ${
+                    isActuallyPaid 
+                      ? 'bg-green-100 text-green-700 border-green-200' 
+                      : isExpired 
+                        ? 'bg-orange-100 text-orange-700 border-orange-200' 
+                        : 'bg-red-100 text-red-700 border-red-200'
                 }`}>
-                    {student.hasPaid ? `Valid Till: ${student.validTill}` : 'Fees Not Paid'}
+                    {isActuallyPaid 
+                        ? `Valid Till: ${student.validTill}` 
+                        : isExpired 
+                            ? `Expired on ${student.validTill} (Fees Unpaid)` 
+                            : 'Fees Not Paid'}
                 </div>
 
                 <div className="p-4 bg-white border-2 border-dashed border-gray-300 rounded-xl mb-6">
